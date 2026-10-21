@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.router import api_router
 from app.core.config import settings
-from app.realtime import handlers  # noqa: F401 — registers Socket.IO events
+from app.realtime import handlers  # noqa: F401
 from app.realtime.socket_manager import sio
 from app.utils.exceptions import register_exception_handlers
 
@@ -20,22 +20,28 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# CORS: allow the local React/Vite frontend
+# Allow the deployed frontend and local development frontends.
+allowed_origins = list(
+    dict.fromkeys(
+        settings.cors_origins_list
+        + [
+            "https://cab-booking-sigma-lime.vercel.app",
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+        ]
+    )
+)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-    ],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Register application exception handlers
 register_exception_handlers(app)
 
-# Register API routes
 app.include_router(api_router, prefix="/api")
 
 
@@ -55,7 +61,7 @@ async def health_check():
     }
 
 
-# Wrap FastAPI with Socket.IO
+# Wrap FastAPI with Socket.IO.
 socket_app = socketio.ASGIApp(
     sio,
     other_asgi_app=app,
