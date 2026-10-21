@@ -268,7 +268,7 @@ export default function BookingPage() {
 
 
 
-      navigate(`/rider/rides/${rideId}`);
+      navigate(`/rider/ride/${rideId}`);
 
     } catch (err) {
 
