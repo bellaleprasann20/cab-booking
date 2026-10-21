@@ -5,8 +5,9 @@ from decimal import Decimal
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field as PydanticField
 from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -34,8 +35,25 @@ class AvailabilityUpdate(BaseModel):
     is_available: bool
 
 
+class DriverProfileUpdate(BaseModel):
+    name: str = PydanticField(min_length=1, max_length=120)
+    phone: str = PydanticField(default="", max_length=20)
+    vehicle_model: str = PydanticField(min_length=1, max_length=120)
+    vehicle_number: str = PydanticField(min_length=1, max_length=20)
+    vehicle_color: str = PydanticField(default="", max_length=30)
+
+
 def driver_profile_data(user: User, driver: Driver | None) -> dict:
     """Return profile fields in the format expected by the frontend."""
+    combined_vehicle = None
+
+    if driver:
+        combined_vehicle = " ".join(
+            part
+            for part in (driver.vehicle_make, driver.vehicle_model)
+            if part
+        )
+
     return {
         "user_id": str(user.id),
         "name": user.name,
@@ -47,7 +65,7 @@ def driver_profile_data(user: User, driver: Driver | None) -> dict:
         "rating_avg": user.rating_avg,
         "rating_count": user.rating_count,
         "vehicle_make": driver.vehicle_make if driver else None,
-        "vehicle_model": driver.vehicle_model if driver else None,
+        "vehicle_model": combined_vehicle,
         "vehicle_color": driver.vehicle_color if driver else None,
         "vehicle_number": driver.vehicle_plate if driver else None,
         "vehicle_plate": driver.vehicle_plate if driver else None,
@@ -79,6 +97,102 @@ async def driver_profile(
     session: AsyncSession = DbSession,
 ):
     driver = await session.get(Driver, user.id)
+    return {"driver": driver_profile_data(user, driver)}
+
+
+@router.patch("/me")
+async def update_driver_profile(
+    body: DriverProfileUpdate,
+    user: User = Depends(require_roles("driver")),
+    session: AsyncSession = DbSession,
+):
+    """Create or update the authenticated driver's profile."""
+
+    name = body.name.strip()
+    phone = body.phone.strip() or None
+    vehicle_text = body.vehicle_model.strip()
+    vehicle_plate = body.vehicle_number.strip().upper()
+    vehicle_color = body.vehicle_color.strip() or None
+
+    if not name:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Full name is required.",
+        )
+
+    if not vehicle_text:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Vehicle make and model are required.",
+        )
+
+    if not vehicle_plate:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Vehicle registration number is required.",
+        )
+
+    # Keep the combined frontend field compatible with the database's
+    # separate vehicle_make and vehicle_model columns.
+    parts = vehicle_text.split(maxsplit=1)
+    vehicle_make = parts[0][:60]
+    vehicle_model = (parts[1] if len(parts) > 1 else parts[0])[:60]
+
+    driver = await session.get(Driver, user.id)
+
+    # A registration number must not belong to another driver.
+    existing_plate = (
+        await session.exec(
+            select(Driver).where(
+                func.upper(Driver.vehicle_plate) == vehicle_plate,
+                Driver.user_id != user.id,
+            )
+        )
+    ).first()
+
+    if existing_plate:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This vehicle registration number is already registered.",
+        )
+
+    try:
+        user.name = name
+        user.phone = phone
+        session.add(user)
+
+        if driver is None:
+            driver = Driver(
+                user_id=user.id,
+                vehicle_make=vehicle_make,
+                vehicle_model=vehicle_model,
+                vehicle_plate=vehicle_plate,
+                vehicle_color=vehicle_color,
+                verified=False,
+                status=DriverStatus.offline,
+            )
+        else:
+            driver.vehicle_make = vehicle_make
+            driver.vehicle_model = vehicle_model
+            driver.vehicle_plate = vehicle_plate
+            driver.vehicle_color = vehicle_color
+
+        # Do not let profile edits approve the driver or take them online.
+        session.add(driver)
+        await session.commit()
+        await session.refresh(user)
+        await session.refresh(driver)
+
+    except IntegrityError as exc:
+        await session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "The vehicle registration number is already in use, "
+                "or the profile could not be saved because of a data conflict."
+            ),
+        ) from exc
+
     return {"driver": driver_profile_data(user, driver)}
 
 
@@ -206,7 +320,6 @@ async def update_driver_status(
     user: User = Depends(require_roles("driver")),
     session: AsyncSession = DbSession,
 ):
-    # Keep the existing status endpoint compatible with status-based clients.
     requested_status = payload.get("status")
     allowed = {DriverStatus.active.value, DriverStatus.offline.value}
 
@@ -240,6 +353,12 @@ async def set_driver_status(
             detail="Availability cannot be changed while a ride is in progress.",
         )
 
+    if requested_status == DriverStatus.active and not driver.verified:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Your driver profile must be verified before going online.",
+        )
+
     driver.status = requested_status
     session.add(driver)
     await session.commit()
@@ -267,7 +386,6 @@ async def update_driver_availability(
         else DriverStatus.offline
     )
     return await set_driver_status(session, user.id, requested_status)
-
 
 
 @router.get("/me/requests")
