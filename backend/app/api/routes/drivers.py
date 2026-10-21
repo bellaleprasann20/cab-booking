@@ -269,24 +269,162 @@ async def update_driver_availability(
     return await set_driver_status(session, user.id, requested_status)
 
 
-@router.get("/me/requests", status_code=501)
+
+@router.get("/me/requests")
+@router.get("/ride-requests")
 async def incoming_requests(
     user: User = Depends(require_roles("driver")),
+    session: AsyncSession = DbSession,
 ):
-    return not_implemented("Incoming ride requests")
+    """Return actual pending rides from PostgreSQL."""
+    driver = await session.get(Driver, user.id)
+
+    if driver is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Driver profile not found. Complete driver onboarding first.",
+        )
+
+    result = await session.exec(
+        select(Ride)
+        .where(Ride.status == RideStatus.requested)
+        .order_by(Ride.created_at.asc())
+    )
+    rides = result.all()
+
+    return {
+        "requests": [
+            {
+                "id": str(ride.id),
+                "ride_id": str(ride.id),
+                "rider_id": str(ride.rider_id),
+                "pickup_address": ride.pickup_address,
+                "drop_address": ride.drop_address,
+                "destination_address": ride.drop_address,
+                "fare_estimate": str(ride.fare_estimate),
+                "estimated_fare": str(ride.fare_estimate),
+                "distance_km": (
+                    round(ride.distance_meters / 1000, 2)
+                    if ride.distance_meters is not None
+                    else None
+                ),
+                "duration_minutes": (
+                    round(ride.duration_secs / 60, 1)
+                    if ride.duration_secs is not None
+                    else None
+                ),
+                "created_at": (
+                    ride.created_at.isoformat()
+                    if ride.created_at
+                    else None
+                ),
+                "status": ride.status.value,
+            }
+            for ride in rides
+        ]
+    }
 
 
-@router.post("/requests/{ride_id}/accept", status_code=501)
+@router.post("/requests/{ride_id}/accept")
 async def accept_ride(
-    ride_id: str,
+    ride_id: uuid.UUID,
     user: User = Depends(require_roles("driver")),
+    session: AsyncSession = DbSession,
 ):
-    return not_implemented("Ride acceptance")
+    """Atomically assign a pending ride to this driver."""
+    driver = await session.get(Driver, user.id)
+
+    if driver is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Driver profile not found. Complete driver onboarding first.",
+        )
+
+    if not driver.verified:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Your driver profile must be verified before accepting rides.",
+        )
+
+    if driver.status == DriverStatus.on_ride:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Finish your current ride before accepting another.",
+        )
+
+    if driver.status != DriverStatus.active:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Go online before accepting a ride.",
+        )
+
+    result = await session.exec(
+        select(Ride)
+        .where(
+            Ride.id == ride_id,
+            Ride.status == RideStatus.requested,
+            Ride.driver_id.is_(None),
+        )
+        .with_for_update()
+    )
+    ride = result.first()
+
+    if ride is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This ride is no longer available. Refresh ride requests.",
+        )
+
+    ride.driver_id = user.id
+    ride.status = RideStatus.accepted
+    ride.accepted_at = datetime.now(timezone.utc)
+    driver.status = DriverStatus.on_ride
+
+    session.add(ride)
+    session.add(driver)
+    await session.commit()
+    await session.refresh(ride)
+
+    return {
+        "message": "Ride accepted successfully.",
+        "ride": {
+            "id": str(ride.id),
+            "ride_id": str(ride.id),
+            "status": ride.status.value,
+            "pickup_address": ride.pickup_address,
+            "drop_address": ride.drop_address,
+            "fare_estimate": str(ride.fare_estimate),
+        },
+    }
 
 
-@router.post("/requests/{ride_id}/reject", status_code=501)
+@router.post("/requests/{ride_id}/reject")
 async def reject_ride(
-    ride_id: str,
+    ride_id: uuid.UUID,
     user: User = Depends(require_roles("driver")),
+    session: AsyncSession = DbSession,
 ):
-    return not_implemented("Ride rejection")
+    """Dismiss a pending request without cancelling the rider's trip."""
+    driver = await session.get(Driver, user.id)
+
+    if driver is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Driver profile not found. Complete driver onboarding first.",
+        )
+
+    ride = await session.get(Ride, ride_id)
+
+    if ride is None or ride.status != RideStatus.requested:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This ride is no longer available.",
+        )
+
+    # There is currently no per-driver rejection table. Do not cancel
+    # the rider's ride or mark it globally rejected.
+    return {
+        "message": "Request dismissed. The ride remains available to other drivers.",
+        "ride_id": str(ride.id),
+        "dismissed": True,
+    }

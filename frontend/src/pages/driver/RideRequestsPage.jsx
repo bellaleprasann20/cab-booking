@@ -128,7 +128,7 @@ export default function RideRequestsPage() {
 
     try {
       await axios.post(
-        `${API}/rides/${encodeURIComponent(String(id))}/${action}`,
+        `${API}/drivers/requests/${encodeURIComponent(String(id))}/${action}`,
         {},
         authConfig()
       );
