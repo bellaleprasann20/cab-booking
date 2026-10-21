@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import axios from "axios";
@@ -11,17 +12,59 @@ import {
   FaUser,
 } from "react-icons/fa6";
 
-const API = (import.meta.env.VITE_API_URL || "http://localhost:8000/api").replace(/\/+$/, "");
+const API = (
+  import.meta.env.VITE_API_URL || "http://localhost:8000/api"
+).replace(/\/+$/, "");
 
 function authConfig() {
   const token = localStorage.getItem("access_token");
-  return { headers: token ? { Authorization: `Bearer ${token}` } : {} };
+
+  return {
+    headers: token
+      ? { Authorization: `Bearer ${token}` }
+      : {},
+  };
 }
 
 function getErrorMessage(err, fallback) {
-  const detail = err.response?.data?.detail;
-  if (typeof detail === "string") return detail;
-  if (Array.isArray(detail)) return detail.map((item) => item.msg || JSON.stringify(item)).join(", ");
+  const data = err.response?.data;
+  const detail = data?.detail;
+
+  if (Array.isArray(data?.errors)) {
+    return data.errors
+      .map((item) => {
+        const field = item.loc?.at(-1) ?? "Field";
+        return `${field}: ${item.msg}`;
+      })
+      .join(". ");
+  }
+
+  if (Array.isArray(detail)) {
+    return detail
+      .map((item) => item.msg || JSON.stringify(item))
+      .join(", ");
+  }
+
+  if (typeof detail === "string") {
+    return detail;
+  }
+
+  if (err.response?.status === 401) {
+    return "Your session has expired. Please log in again.";
+  }
+
+  if (err.response?.status === 403) {
+    return detail || "You do not have permission to update this profile.";
+  }
+
+  if (err.response?.status === 409) {
+    return detail || "This vehicle registration number is already registered.";
+  }
+
+  if (err.response?.status === 422) {
+    return "Some profile fields are invalid. Check your vehicle details and try again.";
+  }
+
   return fallback;
 }
 
@@ -32,6 +75,39 @@ const emptyForm = {
   vehicle_number: "",
   vehicle_color: "",
 };
+
+function getVehicleModel(data, vehicle) {
+  // Prefer the combined model field returned by the profile API.
+  const combined =
+    data?.vehicle_model ??
+    vehicle?.vehicle_model ??
+    vehicle?.model;
+
+  if (typeof combined === "string" && combined.trim()) {
+    return combined.trim();
+  }
+
+  // The backend stores make and model separately.
+  return [
+    data?.vehicle_make ?? vehicle?.vehicle_make ?? vehicle?.make,
+    data?.vehicle_model_name ?? vehicle?.vehicle_model_name,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+}
+
+function getVehicleNumber(data, vehicle) {
+  return (
+    data?.vehicle_number ??
+    data?.vehicle_plate ??
+    data?.registration_number ??
+    vehicle?.vehicle_number ??
+    vehicle?.vehicle_plate ??
+    vehicle?.registration_number ??
+    ""
+  );
+}
 
 export default function DriverProfilePage() {
   const [form, setForm] = useState(emptyForm);
@@ -49,7 +125,11 @@ export default function DriverProfilePage() {
       setError("");
 
       try {
-        const response = await axios.get(`${API}/drivers/me`, authConfig());
+        const response = await axios.get(
+          `${API}/drivers/me`,
+          authConfig()
+        );
+
         const data = response.data?.driver ?? response.data;
         const user = data?.user ?? {};
         const vehicle = data?.vehicle ?? {};
@@ -57,19 +137,31 @@ export default function DriverProfilePage() {
         if (!active) return;
 
         setProfile(data);
+
         setForm({
           name: data?.name ?? data?.full_name ?? user.name ?? "",
           phone: data?.phone ?? user.phone ?? "",
-          vehicle_model: data?.vehicle_model ?? vehicle.model ?? "",
-          vehicle_number: data?.vehicle_number ?? vehicle.registration_number ?? "",
-          vehicle_color: data?.vehicle_color ?? vehicle.color ?? "",
+          vehicle_model: getVehicleModel(data, vehicle),
+          vehicle_number: getVehicleNumber(data, vehicle),
+          vehicle_color:
+            data?.vehicle_color ??
+            vehicle?.vehicle_color ??
+            vehicle?.color ??
+            "",
         });
       } catch (err) {
         if (active) {
-          setError(getErrorMessage(err, "Unable to load your profile. Check the driver profile API."));
+          setError(
+            getErrorMessage(
+              err,
+              "Unable to load your profile. Please check your connection and try again."
+            )
+          );
         }
       } finally {
-        if (active) setLoading(false);
+        if (active) {
+          setLoading(false);
+        }
       }
     }
 
@@ -82,16 +174,21 @@ export default function DriverProfilePage() {
 
   function handleChange(event) {
     const { name, value } = event.target;
-    setForm((previous) => ({ ...previous, [name]: value }));
+
+    setForm((previous) => ({
+      ...previous,
+      [name]: value,
+    }));
+
     setError("");
     setSuccess("");
   }
 
   async function handleSubmit(event) {
     event.preventDefault();
+
     if (saving) return;
 
-    setSaving(true);
     setError("");
     setSuccess("");
 
@@ -103,21 +200,62 @@ export default function DriverProfilePage() {
       vehicle_color: form.vehicle_color.trim(),
     };
 
+    if (!payload.name) {
+      setError("Please enter your full name.");
+      return;
+    }
+
+    if (!payload.vehicle_model) {
+      setError("Please enter your vehicle make and model.");
+      return;
+    }
+
+    if (!payload.vehicle_number) {
+      setError("Please enter your vehicle registration number.");
+      return;
+    }
+
+    setSaving(true);
+
     try {
-      const response = await axios.patch(`${API}/drivers/me`, payload, authConfig());
+      const response = await axios.patch(
+        `${API}/drivers/me`,
+        payload,
+        authConfig()
+      );
+
       const updated = response.data?.driver ?? response.data;
+      const updatedUser = updated?.user ?? {};
+      const updatedVehicle = updated?.vehicle ?? {};
 
       setProfile((previous) => ({
-        ...previous,
+        ...(previous ?? {}),
         ...updated,
-        user: { ...(previous?.user ?? {}), ...(updated?.user ?? {}) },
-        vehicle: { ...(previous?.vehicle ?? {}), ...(updated?.vehicle ?? {}) },
+        user: {
+          ...(previous?.user ?? {}),
+          ...updatedUser,
+        },
+        vehicle: {
+          ...(previous?.vehicle ?? {}),
+          ...updatedVehicle,
+        },
       }));
 
-      setForm((previous) => ({ ...previous, ...payload }));
+      // Keep the values the user submitted, even if the API response
+      // returns a different naming convention for vehicle fields.
+      setForm((previous) => ({
+        ...previous,
+        ...payload,
+      }));
+
       setSuccess("Profile updated successfully.");
     } catch (err) {
-      setError(getErrorMessage(err, "Could not update your profile. Check the accepted profile fields."));
+      setError(
+        getErrorMessage(
+          err,
+          "Could not update your profile. Please try again."
+        )
+      );
     } finally {
       setSaving(false);
     }
@@ -125,14 +263,19 @@ export default function DriverProfilePage() {
 
   const verification = String(
     profile?.verification_status ??
-      (profile?.is_verified === true
+      profile?.status_verification ??
+      (profile?.verified === true || profile?.is_verified === true
         ? "verified"
-        : profile?.is_verified === false
+        : profile?.verified === false || profile?.is_verified === false
           ? "pending"
-          : "unknown")
+          : "pending")
   ).toLowerCase();
 
-  const verified = ["verified", "approved", "active"].includes(verification);
+  const verified = [
+    "verified",
+    "approved",
+    "active",
+  ].includes(verification);
 
   if (loading) {
     return (
@@ -146,13 +289,20 @@ export default function DriverProfilePage() {
     <main className="min-h-screen bg-[#080d18] text-white">
       <header className="border-b border-white/10 bg-[#0c1422]">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-5 py-5 sm:px-8">
-          <Link to="/driver/dashboard" className="flex items-center gap-2 text-sm text-slate-300 hover:text-lime-300">
+          <Link
+            to="/driver/dashboard"
+            className="flex items-center gap-2 text-sm text-slate-300 hover:text-lime-300"
+          >
             <FaArrowLeft /> Dashboard
           </Link>
+
           <Link to="/" className="text-lg font-black">
             GoCab<span className="text-lime-300">.</span>
           </Link>
-          <span className="text-xs font-semibold text-slate-400">Driver profile</span>
+
+          <span className="text-xs font-semibold text-slate-400">
+            Driver profile
+          </span>
         </div>
       </header>
 
@@ -160,19 +310,29 @@ export default function DriverProfilePage() {
         <p className="text-xs font-bold uppercase tracking-[0.2em] text-lime-300">
           Account settings
         </p>
-        <h1 className="mt-3 text-3xl font-black sm:text-4xl">Driver profile</h1>
+
+        <h1 className="mt-3 text-3xl font-black sm:text-4xl">
+          Driver profile
+        </h1>
+
         <p className="mt-2 text-sm text-slate-400">
           Manage your contact and vehicle information.
         </p>
 
         {error && (
-          <div role="alert" className="mt-6 rounded-2xl border border-red-400/20 bg-red-400/10 p-4 text-sm text-red-200">
+          <div
+            role="alert"
+            className="mt-6 rounded-2xl border border-red-400/20 bg-red-400/10 p-4 text-sm text-red-200"
+          >
             {error}
           </div>
         )}
 
         {success && (
-          <div role="status" className="mt-6 rounded-2xl border border-lime-300/20 bg-lime-300/10 p-4 text-sm text-lime-200">
+          <div
+            role="status"
+            className="mt-6 rounded-2xl border border-lime-300/20 bg-lime-300/10 p-4 text-sm text-lime-200"
+          >
             {success}
           </div>
         )}
@@ -183,25 +343,37 @@ export default function DriverProfilePage() {
               <div className="flex h-20 w-20 items-center justify-center rounded-3xl bg-lime-300/10 text-3xl text-lime-300">
                 <FaUser />
               </div>
-              <h2 className="mt-5 text-xl font-black">{form.name || "Driver"}</h2>
+
+              <h2 className="mt-5 text-xl font-black">
+                {form.name || "Driver"}
+              </h2>
+
               <p className="mt-1 break-all text-sm text-slate-400">
-                {profile?.email || profile?.user?.email || "Email not provided"}
+                {profile?.email ||
+                  profile?.user?.email ||
+                  "Email not provided"}
               </p>
 
-              <div className={`mt-5 flex items-center gap-3 rounded-2xl border p-4 ${
-                verified
-                  ? "border-lime-300/20 bg-lime-300/[0.06]"
-                  : "border-amber-300/20 bg-amber-300/[0.06]"
-              }`}>
+              <div
+                className={`mt-5 flex items-center gap-3 rounded-2xl border p-4 ${
+                  verified
+                    ? "border-lime-300/20 bg-lime-300/[0.06]"
+                    : "border-amber-300/20 bg-amber-300/[0.06]"
+                }`}
+              >
                 {verified ? (
                   <FaCircleCheck className="text-xl text-lime-300" />
                 ) : (
                   <FaShieldHalved className="text-xl text-amber-300" />
                 )}
+
                 <div>
                   <p className="text-sm font-bold">
-                    {verified ? "Verified driver" : "Verification pending"}
+                    {verified
+                      ? "Verified driver"
+                      : "Verification pending"}
                   </p>
+
                   <p className="mt-1 text-xs capitalize text-slate-400">
                     Server status: {verification.replaceAll("_", " ")}
                   </p>
@@ -209,7 +381,8 @@ export default function DriverProfilePage() {
               </div>
 
               <p className="mt-5 text-xs leading-6 text-slate-500">
-                Driver approval and identity verification are controlled by the platform.
+                Driver approval and identity verification are controlled
+                by the platform.
               </p>
             </section>
 
@@ -218,12 +391,19 @@ export default function DriverProfilePage() {
                 <FaCarSide className="text-xl text-lime-300" />
                 <h2 className="font-bold">Vehicle summary</h2>
               </div>
-              <p className="mt-4 text-lg font-bold">{form.vehicle_model || "Vehicle not added"}</p>
+
+              <p className="mt-4 text-lg font-bold">
+                {form.vehicle_model || "Vehicle not added"}
+              </p>
+
               <p className="mt-2 text-sm text-slate-400">
                 {form.vehicle_number || "Registration number not added"}
               </p>
+
               {form.vehicle_color && (
-                <p className="mt-2 text-sm text-slate-400">Color: {form.vehicle_color}</p>
+                <p className="mt-2 text-sm text-slate-400">
+                  Color: {form.vehicle_color}
+                </p>
               )}
             </section>
           </aside>
@@ -231,17 +411,27 @@ export default function DriverProfilePage() {
           <section className="rounded-3xl border border-white/10 bg-[#0d1523] p-5 sm:p-8">
             <div className="flex items-center gap-3">
               <FaIdCard className="text-xl text-lime-300" />
+
               <div>
-                <h2 className="text-lg font-bold">Personal and vehicle details</h2>
+                <h2 className="text-lg font-bold">
+                  Personal and vehicle details
+                </h2>
+
                 <p className="mt-1 text-sm text-slate-400">
-                  Update the fields supported by your account.
+                  Update your contact and vehicle information.
                 </p>
               </div>
             </div>
 
             <form onSubmit={handleSubmit} className="mt-7 space-y-5">
               <div>
-                <label htmlFor="name" className="mb-2 block text-sm font-semibold">Full name</label>
+                <label
+                  htmlFor="name"
+                  className="mb-2 block text-sm font-semibold"
+                >
+                  Full name
+                </label>
+
                 <input
                   id="name"
                   name="name"
@@ -256,7 +446,13 @@ export default function DriverProfilePage() {
               </div>
 
               <div>
-                <label htmlFor="phone" className="mb-2 block text-sm font-semibold">Phone number</label>
+                <label
+                  htmlFor="phone"
+                  className="mb-2 block text-sm font-semibold"
+                >
+                  Phone number
+                </label>
+
                 <input
                   id="phone"
                   name="phone"
@@ -272,45 +468,72 @@ export default function DriverProfilePage() {
 
               <div className="border-t border-white/10 pt-5">
                 <h3 className="font-bold">Vehicle information</h3>
+
                 <p className="mt-1 text-xs leading-5 text-slate-400">
-                  Enter accurate details for the vehicle registered with the platform.
+                  Enter accurate details for the vehicle registered
+                  with the platform.
                 </p>
               </div>
 
               <div>
-                <label htmlFor="vehicle_model" className="mb-2 block text-sm font-semibold">Vehicle make and model</label>
+                <label
+                  htmlFor="vehicle_model"
+                  className="mb-2 block text-sm font-semibold"
+                >
+                  Vehicle make and model
+                </label>
+
                 <input
                   id="vehicle_model"
                   name="vehicle_model"
                   value={form.vehicle_model}
                   onChange={handleChange}
+                  required
+                  minLength={1}
                   maxLength={100}
+                  autoComplete="off"
                   className="w-full rounded-xl border border-white/10 bg-[#101827] px-4 py-3.5 text-sm outline-none focus:border-lime-300/50"
-                  placeholder="e.g. vehicle make and model"
+                  placeholder="e.g. Maruti Swift"
                 />
               </div>
 
               <div className="grid gap-5 sm:grid-cols-2">
                 <div>
-                  <label htmlFor="vehicle_number" className="mb-2 block text-sm font-semibold">Registration number</label>
+                  <label
+                    htmlFor="vehicle_number"
+                    className="mb-2 block text-sm font-semibold"
+                  >
+                    Registration number
+                  </label>
+
                   <input
                     id="vehicle_number"
                     name="vehicle_number"
                     value={form.vehicle_number}
                     onChange={handleChange}
-                    maxLength={30}
+                    required
+                    minLength={1}
+                    maxLength={20}
+                    autoComplete="off"
                     className="w-full rounded-xl border border-white/10 bg-[#101827] px-4 py-3.5 text-sm uppercase outline-none focus:border-lime-300/50"
-                    placeholder="Vehicle registration"
+                    placeholder="e.g. KA01AB1234"
                   />
                 </div>
+
                 <div>
-                  <label htmlFor="vehicle_color" className="mb-2 block text-sm font-semibold">Vehicle color</label>
+                  <label
+                    htmlFor="vehicle_color"
+                    className="mb-2 block text-sm font-semibold"
+                  >
+                    Vehicle color
+                  </label>
+
                   <input
                     id="vehicle_color"
                     name="vehicle_color"
                     value={form.vehicle_color}
                     onChange={handleChange}
-                    maxLength={40}
+                    maxLength={30}
                     className="w-full rounded-xl border border-white/10 bg-[#101827] px-4 py-3.5 text-sm outline-none focus:border-lime-300/50"
                     placeholder="Vehicle color"
                   />
@@ -322,7 +545,8 @@ export default function DriverProfilePage() {
                 disabled={saving}
                 className="flex w-full items-center justify-center gap-2 rounded-xl bg-lime-300 px-5 py-4 font-bold text-slate-950 transition hover:bg-lime-200 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                <FaFloppyDisk /> {saving ? "Saving changes..." : "Save changes"}
+                <FaFloppyDisk />
+                {saving ? "Saving changes..." : "Save changes"}
               </button>
             </form>
           </section>
