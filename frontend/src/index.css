@@ -1,0 +1,257 @@
+@import "tailwindcss";
+@import "tailwindcss";
+
+/* ========================================
+   GoCab - Global Theme
+======================================== */
+
+:root {
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", sans-serif;
+
+  color: #f8fafc;
+  background: #080d19;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
+  --gocab-bg: #080d19;
+  --gocab-surface: #101827;
+  --gocab-surface-light: #172235;
+  --gocab-border: #273449;
+  --gocab-lime: #b9f43b;
+  --gocab-lime-hover: #a6e52b;
+  --gocab-text: #f8fafc;
+  --gocab-muted: #94a3b8;
+  --gocab-danger: #f87171;
+  --gocab-success: #4ade80;
+  --gocab-radius: 16px;
+
+  font-optical-sizing: auto;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-width: 320px;
+  min-height: 100%;
+  scroll-behavior: smooth;
+  color-scheme: dark;
+}
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
+  margin: 0;
+  background: var(--gocab-bg);
+  color: var(--gocab-text);
+}
+
+body,
+button,
+input,
+textarea,
+select {
+  font-family: inherit;
+}
+
+button,
+input,
+textarea,
+select {
+  font-size: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+img,
+svg,
+video,
+canvas {
+  max-width: 100%;
+}
+
+img {
+  display: block;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p {
+  margin-top: 0;
+}
+
+::selection {
+  background: var(--gocab-lime);
+  color: #080d19;
+}
+
+:focus-visible {
+  outline: 2px solid var(--gocab-lime);
+  outline-offset: 3px;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+/* ========================================
+   Scrollbars
+======================================== */
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #344258 var(--gocab-bg);
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-track {
+  background: var(--gocab-bg);
+}
+
+*::-webkit-scrollbar-thumb {
+  background: #344258;
+  border-radius: 999px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: #52647c;
+}
+
+/* ========================================
+   Reusable GoCab Utilities
+======================================== */
+
+.gocab-card {
+  border: 1px solid var(--gocab-border);
+  border-radius: var(--gocab-radius);
+  background: var(--gocab-surface);
+}
+
+.gocab-muted {
+  color: var(--gocab-muted);
+}
+
+.gocab-accent {
+  color: var(--gocab-lime);
+}
+
+.gocab-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 0;
+  border-radius: 10px;
+  padding: 12px 18px;
+  background: var(--gocab-lime);
+  color: #080d19;
+  font-weight: 700;
+  transition:
+    background-color 160ms ease,
+    transform 160ms ease;
+}
+
+.gocab-button:hover:not(:disabled) {
+  background: var(--gocab-lime-hover);
+  transform: translateY(-1px);
+}
+
+.gocab-button-secondary {
+  border: 1px solid var(--gocab-border);
+  border-radius: 10px;
+  padding: 11px 17px;
+  background: var(--gocab-surface-light);
+  color: var(--gocab-text);
+  transition: background-color 160ms ease;
+}
+
+.gocab-button-secondary:hover:not(:disabled) {
+  background: #223047;
+}
+
+.gocab-input {
+  width: 100%;
+  border: 1px solid var(--gocab-border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  background: var(--gocab-surface);
+  color: var(--gocab-text);
+  outline: none;
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.gocab-input::placeholder {
+  color: #64748b;
+}
+
+.gocab-input:focus {
+  border-color: var(--gocab-lime);
+  box-shadow: 0 0 0 3px rgb(185 244 59 / 12%);
+}
+
+.gocab-error {
+  color: var(--gocab-danger);
+  font-size: 0.875rem;
+}
+
+.gocab-success {
+  color: var(--gocab-success);
+  font-size: 0.875rem;
+}
+
+/* ========================================
+   Animations
+======================================== */
+
+@keyframes gocab-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.gocab-fade-in {
+  animation: gocab-fade-in 240ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

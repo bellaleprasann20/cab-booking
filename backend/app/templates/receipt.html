@@ -1,0 +1,424 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Cab Booking - Payment Receipt</title>
+
+    <style>
+        @page {
+            size: A4;
+            margin: 18mm;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: Arial, Helvetica, sans-serif;
+            color: #1f2937;
+            font-size: 12px;
+            line-height: 1.5;
+            background: #ffffff;
+        }
+
+        .receipt {
+            width: 100%;
+        }
+
+        .header {
+            padding-bottom: 18px;
+            border-bottom: 2px solid #4f46e5;
+        }
+
+        .brand {
+            font-size: 26px;
+            font-weight: 800;
+            color: #4f46e5;
+            letter-spacing: -0.5px;
+        }
+
+        .tagline {
+            margin-top: 3px;
+            color: #6b7280;
+            font-size: 11px;
+        }
+
+        .receipt-label {
+            margin-top: 18px;
+            font-size: 22px;
+            font-weight: 700;
+            color: #111827;
+        }
+
+        .receipt-number {
+            margin-top: 4px;
+            color: #6b7280;
+        }
+
+        .status {
+            display: inline-block;
+            margin-top: 12px;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-weight: 700;
+            font-size: 10px;
+            text-transform: uppercase;
+            color: #166534;
+            background: #dcfce7;
+        }
+
+        .section {
+            margin-top: 22px;
+        }
+
+        .section-title {
+            margin: 0 0 10px;
+            padding-bottom: 7px;
+            border-bottom: 1px solid #e5e7eb;
+            color: #111827;
+            font-size: 13px;
+            font-weight: 700;
+        }
+
+        .details-table,
+        .fare-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .details-table td {
+            width: 50%;
+            padding: 7px 8px 7px 0;
+            vertical-align: top;
+        }
+
+        .field-label {
+            display: block;
+            margin-bottom: 2px;
+            color: #6b7280;
+            font-size: 10px;
+        }
+
+        .field-value {
+            font-weight: 600;
+            overflow-wrap: break-word;
+        }
+
+        .route-box {
+            padding: 14px;
+            border: 1px solid #e5e7eb;
+            border-radius: 6px;
+        }
+
+        .route-point {
+            padding: 5px 0;
+        }
+
+        .route-marker {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            margin-right: 7px;
+            border: 2px solid #4f46e5;
+            border-radius: 50%;
+        }
+
+        .destination-marker {
+            border-color: #16a34a;
+        }
+
+        .route-label {
+            color: #6b7280;
+            font-size: 10px;
+        }
+
+        .route-address {
+            margin-left: 20px;
+            font-weight: 600;
+            overflow-wrap: break-word;
+        }
+
+        .fare-table th,
+        .fare-table td {
+            padding: 10px 8px;
+            border-bottom: 1px solid #e5e7eb;
+            text-align: left;
+        }
+
+        .fare-table th {
+            background: #f3f4f6;
+            color: #374151;
+            font-size: 10px;
+            text-transform: uppercase;
+        }
+
+        .fare-table th:last-child,
+        .fare-table td:last-child {
+            text-align: right;
+        }
+
+        .fare-table .total-row td {
+            padding-top: 14px;
+            border-top: 2px solid #4f46e5;
+            border-bottom: none;
+            font-size: 15px;
+            font-weight: 800;
+            color: #111827;
+        }
+
+        .payment-box {
+            padding: 12px;
+            background: #f9fafb;
+            border: 1px solid #e5e7eb;
+            border-radius: 6px;
+        }
+
+        .footer {
+            margin-top: 30px;
+            padding-top: 14px;
+            border-top: 1px solid #e5e7eb;
+            text-align: center;
+            color: #6b7280;
+            font-size: 10px;
+        }
+
+        .footer strong {
+            color: #374151;
+        }
+
+        .muted {
+            color: #6b7280;
+        }
+
+        .keep-together {
+            page-break-inside: avoid;
+        }
+    </style>
+</head>
+
+<body>
+    <main class="receipt">
+        <header class="header">
+            <div class="brand">
+                {{ company_name | default("CabGo", true) }}
+            </div>
+
+            <div class="tagline">
+                Your journey, our priority.
+            </div>
+
+            <div class="receipt-label">Payment Receipt</div>
+
+            <div class="receipt-number">
+                Receipt No:
+                {{ receipt_number | default("Not provided", true) }}
+            </div>
+
+            <div class="receipt-number">
+                Issued:
+                {{ issued_at | default("Not provided", true) }}
+            </div>
+
+            <div class="status">
+                {{ payment_status | default("Paid", true) }}
+            </div>
+        </header>
+
+        <section class="section">
+            <h2 class="section-title">Booking Information</h2>
+
+            <table class="details-table">
+                <tr>
+                    <td>
+                        <span class="field-label">Ride ID</span>
+                        <span class="field-value">
+                            {{ ride_id | default("N/A", true) }}
+                        </span>
+                    </td>
+                    <td>
+                        <span class="field-label">Booking Date</span>
+                        <span class="field-value">
+                            {{ booking_date | default("N/A", true) }}
+                        </span>
+                    </td>
+                </tr>
+
+                <tr>
+                    <td>
+                        <span class="field-label">Passenger</span>
+                        <span class="field-value">
+                            {{ passenger_name | default("N/A", true) }}
+                        </span>
+                    </td>
+                    <td>
+                        <span class="field-label">Passenger Email</span>
+                        <span class="field-value">
+                            {{ passenger_email | default("N/A", true) }}
+                        </span>
+                    </td>
+                </tr>
+
+                <tr>
+                    <td>
+                        <span class="field-label">Driver</span>
+                        <span class="field-value">
+                            {{ driver_name | default("Not assigned", true) }}
+                        </span>
+                    </td>
+                    <td>
+                        <span class="field-label">Vehicle</span>
+                        <span class="field-value">
+                            {{ vehicle_details | default("N/A", true) }}
+                        </span>
+                    </td>
+                </tr>
+
+                <tr>
+                    <td>
+                        <span class="field-label">Distance</span>
+                        <span class="field-value">
+                            {{ distance_km | default(0) }} km
+                        </span>
+                    </td>
+                    <td>
+                        <span class="field-label">Duration</span>
+                        <span class="field-value">
+                            {{ duration_minutes | default(0) }} minutes
+                        </span>
+                    </td>
+                </tr>
+            </table>
+        </section>
+
+        <section class="section keep-together">
+            <h2 class="section-title">Journey Details</h2>
+
+            <div class="route-box">
+                <div class="route-point">
+                    <span class="route-marker"></span>
+                    <span class="route-label">PICKUP LOCATION</span>
+                    <div class="route-address">
+                        {{ pickup_address | default("Not provided", true) }}
+                    </div>
+                </div>
+
+                <div class="route-point">
+                    <span class="route-marker destination-marker"></span>
+                    <span class="route-label">DROP-OFF LOCATION</span>
+                    <div class="route-address">
+                        {{ dropoff_address | default("Not provided", true) }}
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="section keep-together">
+            <h2 class="section-title">Fare Breakdown</h2>
+
+            <table class="fare-table">
+                <thead>
+                    <tr>
+                        <th>Description</th>
+                        <th>Amount ({{ currency | default("INR", true) }})</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    <tr>
+                        <td>Base Fare</td>
+                        <td>{{ "%.2f" | format(base_fare | default(0) | float) }}</td>
+                    </tr>
+
+                    <tr>
+                        <td>Distance Charge</td>
+                        <td>{{ "%.2f" | format(distance_fare | default(0) | float) }}</td>
+                    </tr>
+
+                    <tr>
+                        <td>Time Charge</td>
+                        <td>{{ "%.2f" | format(time_fare | default(0) | float) }}</td>
+                    </tr>
+
+                    <tr>
+                        <td>Surge Charge</td>
+                        <td>{{ "%.2f" | format(surge_charge | default(0) | float) }}</td>
+                    </tr>
+
+                    <tr>
+                        <td>Taxes</td>
+                        <td>{{ "%.2f" | format(tax_amount | default(0) | float) }}</td>
+                    </tr>
+
+                    <tr>
+                        <td>Discount</td>
+                        <td>-{{ "%.2f" | format(discount_amount | default(0) | float) }}</td>
+                    </tr>
+
+                    <tr class="total-row">
+                        <td>Total Paid</td>
+                        <td>
+                            {{ currency_symbol | default("₹", true) }}{{ "%.2f" | format(total_amount | default(0) | float) }}
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </section>
+
+        <section class="section keep-together">
+            <h2 class="section-title">Payment Information</h2>
+
+            <div class="payment-box">
+                <table class="details-table">
+                    <tr>
+                        <td>
+                            <span class="field-label">Payment Method</span>
+                            <span class="field-value">
+                                {{ payment_method | default("N/A", true) }}
+                            </span>
+                        </td>
+                        <td>
+                            <span class="field-label">Transaction ID</span>
+                            <span class="field-value">
+                                {{ transaction_id | default("N/A", true) }}
+                            </span>
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <td>
+                            <span class="field-label">Payment Date</span>
+                            <span class="field-value">
+                                {{ payment_date | default("N/A", true) }}
+                            </span>
+                        </td>
+                        <td>
+                            <span class="field-label">Payment Status</span>
+                            <span class="field-value">
+                                {{ payment_status | default("Paid", true) }}
+                            </span>
+                        </td>
+                    </tr>
+                </table>
+            </div>
+        </section>
+
+        <footer class="footer">
+            <p><strong>Thank you for riding with us!</strong></p>
+            <p>
+                This receipt records the booking and payment details supplied
+                by the Cab Booking Platform.
+            </p>
+            <p>
+                For assistance:
+                {{ support_email | default("Support contact not configured", true) }}
+            </p>
+            <p class="muted">
+                This is a computer-generated receipt.
+            </p>
+        </footer>
+    </main>
+</body>
+</html>
